@@ -1,0 +1,12 @@
+network:
+  version: 2
+  ethernets:
+    ens3:
+      addresses:
+        - {{ mgmt_ip }}/24
+      gateway4: {{ gateway_ip }}
+      nameservers:
+        addresses:
+          - 8.8.8.8
+          - 4.4.4.4
+

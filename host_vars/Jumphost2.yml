@@ -1,0 +1,6 @@
+mgmt_ip: 10.0.5.102
+gateway_ip: 10.0.5.254
+student_user: Student2
+student_pass_plain: $tudent2
+timezone: UTC
+

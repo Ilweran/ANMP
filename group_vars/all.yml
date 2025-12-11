@@ -1,0 +1,3 @@
+netplan_file: /etc/netplan/01-ens3-static.yaml
+cloudinit_disable_file: /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+

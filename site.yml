@@ -1,0 +1,126 @@
+---
+- name: Configure jumphosts (Ubuntu 22.04.5)
+  hosts: jumphosts
+  become: yes
+  gather_facts: yes
+
+  vars:
+    # Ansible-managed netplan file (lab interface only)
+    netplan_file: /etc/netplan/01-ansible-lab.yaml
+
+  tasks:
+
+  # ------------------------------------------------------------------
+  # Hostname (inventory-driven best practice)
+  # ------------------------------------------------------------------
+  - name: Set system hostname (persistent)
+    ansible.builtin.command: hostnamectl set-hostname "{{ inventory_hostname }}"
+    tags: hostname
+
+  - name: Ensure /etc/hosts contains hostname mapping
+    ansible.builtin.lineinfile:
+      path: /etc/hosts
+      regexp: '^127\\.0\\.1\\.1\\s+'
+      line: "127.0.1.1 {{ inventory_hostname }}"
+      state: present
+    tags: hostname
+
+  # ------------------------------------------------------------------
+  # Packages
+  # ------------------------------------------------------------------
+  - name: Ensure apt cache updated and upgrade packages
+    ansible.builtin.apt:
+      update_cache: yes
+      upgrade: dist
+      autoremove: yes
+      autoclean: yes
+    tags: packages
+
+  - name: Install required packages
+    ansible.builtin.apt:
+      name:
+        - chrony
+        - netplan.io
+      state: present
+      update_cache: yes
+    tags: packages
+
+  # ------------------------------------------------------------------
+  # Time & NTP
+  # ------------------------------------------------------------------
+  - name: Set system timezone
+    ansible.builtin.command: timedatectl set-timezone "{{ timezone }}"
+    tags: timezone
+
+  - name: Configure chrony NTP servers
+    block:
+      - name: Backup existing chrony.conf if present
+        ansible.builtin.copy:
+          src: /etc/chrony/chrony.conf
+          dest: /etc/chrony/chrony.conf.bak
+          remote_src: yes
+        ignore_errors: yes
+
+      - name: Template chrony.conf
+        ansible.builtin.template:
+          src: chrony.conf.j2
+          dest: /etc/chrony/chrony.conf
+          owner: root
+          group: root
+          mode: '0644'
+        notify: restart chrony
+    tags: ntp
+
+  # ------------------------------------------------------------------
+  # Student user (PER HOST via host_vars)
+  # ------------------------------------------------------------------
+  - name: Assert student user variables are defined
+    ansible.builtin.assert:
+      that:
+        - student_user is defined
+        - student_pass_plain is defined
+      fail_msg: "student_user and student_pass_plain must be defined in host_vars"
+    tags: users
+
+  - name: Create student user
+    ansible.builtin.user:
+      name: "{{ student_user }}"
+      comment: "Lab student account"
+      password: "{{ student_pass_plain | password_hash('sha512') }}"
+      groups: sudo
+      shell: /bin/bash
+      create_home: yes
+      state: present
+    tags: users
+
+  - name: Ensure sudoers file for student allows NOPASSWD
+    ansible.builtin.copy:
+      dest: "/etc/sudoers.d/{{ student_user }}"
+      content: "{{ student_user }} ALL=(ALL) NOPASSWD:ALL\n"
+      owner: root
+      group: root
+      mode: '0440'
+    tags: users
+
+  # ------------------------------------------------------------------
+  # Netplan (LAB INTERFACE ONLY – ens4)
+  # ------------------------------------------------------------------
+  - name: Configure netplan for lab interface only (ens4)
+    ansible.builtin.template:
+      src: netplan-lab.j2
+      dest: "{{ netplan_file }}"
+      owner: root
+      group: root
+      mode: '0644'
+    notify: apply netplan
+    tags: netplan
+
+  handlers:
+    - name: restart chrony
+      ansible.builtin.service:
+        name: chrony
+        state: restarted
+
+    - name: apply netplan
+      ansible.builtin.command: netplan apply
+

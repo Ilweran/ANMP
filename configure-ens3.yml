@@ -1,0 +1,62 @@
+---
+- name: Configure static IP for ENS3 on jumphosts
+  hosts: jumphosts
+  become: yes
+  gather_facts: yes
+
+  pre_tasks:
+
+    - name: Ensure mgmt_ip variable is defined for this host
+      fail:
+        msg: "mgmt_ip is not defined for {{ inventory_hostname }}. Please define it in host_vars."
+      when: mgmt_ip is not defined
+
+    - name: Show static IP selection
+      debug:
+        msg: "Configuring {{ inventory_hostname }} → static ENS3 IP {{ mgmt_ip }} (gateway {{ gateway_ip }})"
+
+    - name: Check if static IP is already in use
+      ansible.builtin.ping:
+      delegate_to: "{{ mgmt_ip }}"
+      ignore_unreachable: yes
+      ignore_errors: yes
+      register: ping_result
+
+    - name: Abort if static IP responds
+      fail:
+        msg: "Static IP {{ mgmt_ip }} is already in use. Aborting."
+      when: ping_result.ping is defined and ping_result.ping == "pong"
+
+  tasks:
+
+    - name: Remove cloud-init generated netplan file if present
+      file:
+        path: /etc/netplan/50-cloud-init.yaml
+        state: absent
+
+    - name: Disable cloud-init network config regeneration
+      copy:
+        dest: "{{ cloudinit_disable_file }}"
+        content: |
+          network:
+            config: disabled
+        mode: '0644'
+
+    - name: Ensure netplan.io is installed
+      apt:
+        name: netplan.io
+        state: present
+        update_cache: yes
+
+    - name: Install static netplan configuration for ENS3
+      template:
+        src: netplan-ens3.j2
+        dest: "{{ netplan_file }}"
+        mode: '0644'
+      notify: Apply netplan
+
+  handlers:
+    - name: Apply netplan
+      command: netplan apply
+      async: 5
+      poll: 0
