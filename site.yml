@@ -45,6 +45,26 @@
       update_cache: yes
     tags: packages
 
+  - name: Set default password encryption method to SHA512 in /etc/login.defs
+    ansible.builtin.lineinfile:
+      path: /etc/login.defs
+      regexp: '^ENCRYPT_METHOD\s+'
+      line: "ENCRYPT_METHOD SHA512"
+      state: present
+    tags: users, packages
+
+  - name: Ensure libpam-runtime package is installed
+    ansible.builtin.apt:
+      name: libpam-runtime
+      state: present
+    tags: packages, users
+
+  - name: Ensure SHA512 is selected as the default hashing method via pam-auth-update
+    ansible.builtin.command: pam-auth-update --enable sha512
+    # This command updates the /etc/pam.d/common-* files correctly
+    changed_when: true # This command always reports success, so we force Ansible to report a change
+    tags: users
+
   # ------------------------------------------------------------------
   # Time & NTP
   # ------------------------------------------------------------------
@@ -78,19 +98,20 @@
     ansible.builtin.assert:
       that:
         - student_user is defined
-        - student_pass_plain is defined
-      fail_msg: "student_user and student_pass_plain must be defined in host_vars"
+        - student_pass_hash is defined
+      fail_msg: "student_user and student_pass_hash must be defined in host_vars"
     tags: users
 
   - name: Create student user
     ansible.builtin.user:
       name: "{{ student_user }}"
       comment: "Lab student account"
-      password: "{{ student_pass_plain | password_hash('sha512') }}"
+      password: "{{ student_pass_hash }}"
       groups: sudo
       shell: /bin/bash
       create_home: yes
       state: present
+      update_password: always
     tags: users
 
   - name: Ensure sudoers file for student allows NOPASSWD
@@ -100,6 +121,15 @@
       owner: root
       group: root
       mode: '0440'
+    tags: users
+
+  - name: Ensure SSH Password Authentication is enabled
+    ansible.builtin.lineinfile:
+      path: /etc/ssh/sshd_config
+      regexp: '^(#\s*)?PasswordAuthentication\s+'
+      line: "PasswordAuthentication yes"
+      state: present
+    notify: restart sshd
     tags: users
 
   # ------------------------------------------------------------------
@@ -124,3 +154,7 @@
     - name: apply netplan
       ansible.builtin.command: netplan apply
 
+    - name: restart sshd
+      ansible.builtin.service:
+        name: sshd
+        state: restarted
