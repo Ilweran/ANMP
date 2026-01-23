@@ -1,3 +1,0 @@
-[jumphosts]
-Jumphost1 ansible_host=10.0.5.119 ansible_user=cloud_test ansible_password=test123
-Jumphost2 ansible_host=10.0.5.122 ansible_user=cloud_test ansible_password=test123
