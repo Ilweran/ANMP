@@ -1,5 +1,5 @@
-mgmt_ip: 10.0.5.101
-gateway_ip: 10.0.5.254
+mgmt_ip: 192.168.0.101
+gateway_ip: 192.168.0.1
 student_user: Student1
 student_pass_hash: !vault |
           $ANSIBLE_VAULT;1.1;AES256
